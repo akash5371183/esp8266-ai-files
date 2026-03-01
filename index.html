@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cloud Edge AI Control</title>
+<style>
+    body { margin: 0; overflow: hidden; background: #111; font-family: Arial; color: white; }
+    video, canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+    #info { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px; font-size: 18px; z-index: 10;}
+    .status-dot { height: 12px; width: 12px; background-color: red; border-radius: 50%; display: inline-block; margin-right: 8px; }
+    .connected { background-color: #00FF00; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+</head>
+<body>
+
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+<div id="info">
+    <div><span id="mqtt-dot" class="status-dot"></span>Cloud Connection</div>
+    <div style="margin-top: 10px;" id="ai-status">Loading AI...</div>
+</div>
+
+<script src="hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+<script>
+// --- 1. MQTT CLOUD SETUP ---
+const mqttBroker = "broker.hivemq.com";
+const mqttPort = 8884; // Secure WebSockets port
+const mqttTopic = "akash/ai/fingers";
+const clientId = "WebClient-" + Math.random().toString(16).substr(2, 8);
+
+const mqttClient = new Paho.MQTT.Client(mqttBroker, mqttPort, clientId);
+let mqttConnected = false;
+
+mqttClient.onConnectionLost = function (responseObject) {
+    document.getElementById("mqtt-dot").classList.remove("connected");
+    console.log("MQTT Connection Lost: " + responseObject.errorMessage);
+};
+
+mqttClient.connect({
+    useSSL: true,
+    onSuccess: function () {
+        document.getElementById("mqtt-dot").classList.add("connected");
+        mqttConnected = true;
+        console.log("Connected to Cloud Broker!");
+    }
+});
+
+// --- 2. AI & CAMERA SETUP ---
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const statusText = document.getElementById("ai-status");
+
+function resizeCanvas() { canvas.width = video.videoWidth; canvas.height = video.videoHeight; }
+video.addEventListener("loadeddata", resizeCanvas);
+window.addEventListener("resize", resizeCanvas);
+
+let lastSend = 0;
+function sendToCloud(fingers) {
+    if (!mqttConnected) return;
+    const now = Date.now();
+    if (now - lastSend < 150) return; // Throttle to prevent spamming
+    lastSend = now;
+    
+    const message = new Paho.MQTT.Message(fingers.join(""));
+    message.destinationName = mqttTopic;
+    mqttClient.send(message);
+}
+
+function fingersUp(landmarks) {
+    let fingers = [];
+    const tips = [4, 8, 12, 16, 20];
+    for (let i = 0; i < tips.length; i++) {
+        if (i === 0) fingers.push(landmarks[tips[i]].x < landmarks[tips[i]-1].x ? 1 : 0);
+        else fingers.push(landmarks[tips[i]].y < landmarks[tips[i]-2].y ? 1 : 0);
+    }
+    return fingers;
+}
+
+window.onload = () => {
+    // Uses the hands.js you uploaded to the same GitHub folder!
+    const hands = new Hands({ locateFile: file => `${file}` });
+    hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.7 });
+
+    hands.onResults(results => {
+        ctx.save();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            drawConnectors(ctx, results.multiHandLandmarks[0], HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 5});
+            drawLandmarks(ctx, results.multiHandLandmarks[0], {color: '#FF0000', radius: 7});
+            const states = fingersUp(results.multiHandLandmarks[0]);
+            sendToCloud(states);
+            statusText.innerHTML = "Fingers: " + states.join("");
+        } else {
+            statusText.innerHTML = "No hand detected";
+        }
+        ctx.restore();
+    });
+
+    const camera = new Camera(video, { onFrame: async () => { await hands.send({ image: video }); }, width: 640, height: 480 });
+    camera.start().then(() => statusText.innerHTML = "AI Active!").catch(() => statusText.innerHTML = "Camera Blocked.");
+};
+</script>
+</body>
+</html>
