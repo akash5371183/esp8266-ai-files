@@ -22,7 +22,7 @@
     <div style="margin-top: 10px;" id="ai-status">Loading AI...</div>
 </div>
 
-<script src="hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 
@@ -30,7 +30,7 @@
 // --- 1. MQTT CLOUD SETUP ---
 const mqttBroker = "broker.hivemq.com";
 const mqttPort = 8884; // Secure WebSockets port
-const mqttTopic = "akash/ai/fingers";
+const mqttTopic = "akash/ai/fingers"; 
 const clientId = "WebClient-" + Math.random().toString(16).substr(2, 8);
 
 const mqttClient = new Paho.MQTT.Client(mqttBroker, mqttPort, clientId);
@@ -64,7 +64,7 @@ let lastSend = 0;
 function sendToCloud(fingers) {
     if (!mqttConnected) return;
     const now = Date.now();
-    if (now - lastSend < 150) return; // Throttle to prevent spamming
+    if (now - lastSend < 150) return; // Throttle 
     lastSend = now;
     
     const message = new Paho.MQTT.Message(fingers.join(""));
@@ -83,8 +83,8 @@ function fingersUp(landmarks) {
 }
 
 window.onload = () => {
-    // Uses the hands.js you uploaded to the same GitHub folder!
-    const hands = new Hands({ locateFile: file => `${file}` });
+    // Pulling the heavy WASM files from Google's reliable servers
+    const hands = new Hands({ locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
     hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.7 });
 
     hands.onResults(results => {
