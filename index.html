@@ -64,7 +64,7 @@ let lastSend = 0;
 function sendToCloud(fingers) {
     if (!mqttConnected) return;
     const now = Date.now();
-    if (now - lastSend < 150) return; // Throttle 
+    if (now - lastSend < 50) return; // Throttle 
     lastSend = now;
     
     const message = new Paho.MQTT.Message(fingers.join(""));
